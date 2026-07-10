@@ -1,0 +1,267 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/geist/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/geist/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "Geist", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: calc(var(--radius-xl) + 8px);
+  --radius-3xl: calc(var(--radius-xl) + 16px);
+  --radius-4xl: calc(var(--radius-xl) + 24px);
+
+  --color-bg: var(--bg);
+  --color-bg-2: var(--bg-2);
+  --color-surface: var(--surface);
+  --color-surface-hi: var(--surface-hi);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-p1: var(--p1);
+  --color-p2: var(--p2);
+  --color-p3: var(--p3);
+  --color-p4: var(--p4);
+
+  /* aliases for shadcn/Lovable primitives still present in the project */
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface-hi);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--ink);
+  --color-secondary: var(--surface-hi);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface);
+  --color-muted-foreground: var(--text-2);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--error);
+  --color-destructive-foreground: var(--ink);
+  --color-input: var(--border);
+  --color-ring: var(--accent);
+  --color-ring-offset-background: var(--bg);
+  --color-chart-1: var(--accent);
+  --color-chart-2: var(--p2);
+  --color-chart-3: var(--p3);
+  --color-chart-4: var(--success);
+  --color-chart-5: var(--warning);
+  --color-sidebar: var(--bg-2);
+  --color-sidebar-foreground: var(--text);
+  --color-sidebar-primary: var(--accent);
+  --color-sidebar-primary-foreground: var(--ink);
+  --color-sidebar-accent: var(--surface-hi);
+  --color-sidebar-accent-foreground: var(--text);
+  --color-sidebar-border: var(--border);
+  --color-sidebar-ring: var(--accent);
+}
+
+:root,
+.dark {
+  /* superfícies */
+  --bg: oklch(0.1468 0.0086 285.29);
+  --bg-2: oklch(0.1604 0.0107 276.24);
+  --surface: oklch(0.1979 0.0141 278.64);
+  --surface-hi: oklch(0.2328 0.0176 275.14);
+
+  /* texto & bordas */
+  --text: oklch(0.9442 0.0053 286.3);
+  --text-2: oklch(0.6949 0.0176 278.38);
+  --text-3: oklch(0.5053 0.0175 277.56);
+  --border: oklch(0.2544 0.0191 276.1);
+  --ink: oklch(0.1468 0.0086 285.29);
+
+  /* acento & semânticas */
+  --accent: oklch(0.7001 0.1521 289.22);
+  --accent-soft: oklch(0.831 0.0839 292.89);
+  --success: oklch(0.7252 0.1319 158.62);
+  --warning: oklch(0.7949 0.1308 79.96);
+  --error: oklch(0.6998 0.1566 24.68);
+
+  /* cores de pessoa */
+  --p1: oklch(0.7001 0.1521 289.22);
+  --p2: oklch(0.7925 0.108 53.51);
+  --p3: oklch(0.7688 0.1077 225.75);
+  --p4: oklch(0.7457 0.1265 349.86);
+
+  /* raios */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+
+  /* espaçamento (base 4) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* motion */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-instant: 120ms;
+  --dur-fast: 180ms;
+  --dur-base: 240ms;
+  --dur-sheet: 320ms;
+
+  /* tipografia */
+  --font-sans: "Geist", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    background: var(--bg);
+  }
+
+  body {
+    min-height: 100dvh;
+    margin: 0;
+    background:
+      radial-gradient(circle at 50% -20%, oklch(0.7001 0.1521 289.22 / 0.12), transparent 34rem),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  ::selection {
+    background: oklch(0.7001 0.1521 289.22 / 0.35);
+    color: var(--text);
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .anim-fade {
+    animation: fade-in var(--dur-base) var(--ease) both;
+  }
+
+  .anim-screen {
+    animation: screen-in var(--dur-base) var(--ease) both;
+  }
+
+  .anim-sheet {
+    animation: sheet-up var(--dur-sheet) var(--ease-in) both;
+  }
+
+  .anim-reward {
+    animation: reward-pop var(--dur-base) var(--ease) both;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes reward-pop {
+  0% {
+    transform: scale(1);
+  }
+  58% {
+    transform: scale(1.018);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}

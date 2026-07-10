@@ -1,0 +1,13 @@
+{
+  "name": "pega-ai-notify",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Enviador de Web Push do Pega Aí (chamado pelo cron-job.org).",
+  "main": "notify.mjs",
+  "scripts": { "start": "node notify.mjs" },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "web-push": "^3.6.7"
+  }
+}
