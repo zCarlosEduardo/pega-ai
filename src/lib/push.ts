@@ -34,14 +34,30 @@ function urlBase64ToUint8Array(base64: string) {
   return out;
 }
 
+/** Registra o service worker se ainda não houver (em dev ele não é registrado) e espera ficar ativo. */
+async function getRegistration(): Promise<ServiceWorkerRegistration> {
+  const reg = (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.register("/sw.js"));
+  const ready = navigator.serviceWorker.ready;
+  const timeout = new Promise<never>((_, rej) =>
+    setTimeout(() => rej(new Error("O serviço de notificações não iniciou. Feche e abra o app e tente de novo.")), 8000));
+  await Promise.race([ready, timeout]);
+  return reg;
+}
+
+function sameKey(a: ArrayBuffer | null | undefined, b: Uint8Array) {
+  if (!a) return false;
+  const x = new Uint8Array(a);
+  return x.length === b.length && x.every((v, i) => v === b[i]);
+}
+
 export type PushState = { supported: boolean; permission: NotificationPermission | "unsupported"; subscribed: boolean; reason: string | null };
 
 export async function getPushState(): Promise<PushState> {
   if (!pushSupported()) return { supported: false, permission: "unsupported", subscribed: false, reason: pushBlockedReason() };
   let subscribed = false;
   try {
-    const reg = await navigator.serviceWorker.ready;
-    subscribed = !!(await reg.pushManager.getSubscription());
+    const reg = await navigator.serviceWorker.getRegistration();
+    subscribed = !!(await reg?.pushManager.getSubscription());
   } catch { /* ignore */ }
   return { supported: true, permission: Notification.permission, subscribed, reason: pushBlockedReason() };
 }
@@ -52,18 +68,55 @@ export async function enablePush(spaceId: string): Promise<{ ok: boolean; error?
   try {
     const perm = await Notification.requestPermission();
     if (perm !== "granted") return { ok: false, error: "Permissão de notificações negada." };
-    const reg = await navigator.serviceWorker.ready;
+    const reg = await getRegistration();
+    const key = urlBase64ToUint8Array(VAPID_PUBLIC!);
     let sub = await reg.pushManager.getSubscription();
+    // inscrição feita com OUTRA chave VAPID nunca recebe push do servidor atual: refaz
+    if (sub && !sameKey(sub.options?.applicationServerKey, key)) {
+      await sub.unsubscribe().catch(() => {});
+      sub = null;
+    }
     if (!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC!),
-      });
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
     }
     await dbSavePushSub(spaceId, sub.toJSON());
+    try { localStorage.setItem(`pega_push_ep_${spaceId}`, sub.endpoint); } catch { /* ignore */ }
     return { ok: true };
   } catch (e: any) {
     return { ok: false, error: e?.message ?? "Falha ao ativar notificações." };
+  }
+}
+
+/**
+ * Chamado ao abrir o app: se o aparelho já tem permissão e inscrição, garante que o servidor
+ * conhece a inscrição ATUAL deste espaço (o navegador pode trocá-la, e quem mudou de espaço
+ * ficaria sem receber). Só grava quando o endereço mudou.
+ */
+export async function syncPushSub(spaceId: string): Promise<void> {
+  try {
+    if (!pushSupported() || Notification.permission !== "granted" || !VAPID_PUBLIC) return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
+    if (!sub) return;
+    const k = `pega_push_ep_${spaceId}`;
+    if (localStorage.getItem(k) === sub.endpoint) return;
+    await dbSavePushSub(spaceId, sub.toJSON());
+    localStorage.setItem(k, sub.endpoint);
+  } catch { /* melhor esforço */ }
+}
+
+/** Mostra uma notificação local: prova que a permissão e o service worker funcionam neste aparelho. */
+export async function showLocalTest(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    if (!pushSupported() || Notification.permission !== "granted") return { ok: false, error: "Ative as notificações primeiro." };
+    const reg = await getRegistration();
+    await reg.showNotification("Pega Aí", {
+      body: "Teste: as notificações estão funcionando neste aparelho.",
+      icon: "/icons/icon-192.png", badge: "/icons/icon-192.png", tag: "local-test",
+    });
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? "Não foi possível mostrar a notificação." };
   }
 }
 
@@ -74,4 +127,5 @@ export async function disablePush(spaceId: string): Promise<void> {
     if (sub) await sub.unsubscribe();
   } catch { /* ignore */ }
   await dbDeletePushSub(spaceId);
+  try { localStorage.removeItem(`pega_push_ep_${spaceId}`); } catch { /* ignore */ }
 }

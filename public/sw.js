@@ -1,9 +1,9 @@
 // Pega Aí — service worker
 // Regras de ouro:
-//  - NUNCA intercepta/coloca em cache requisições cross-origin (Supabase REST/Auth/Realtime).
+//  - NUNCA intercepta/coloca em cache requisições cross-origin (Firebase/Firestore/Auth e qualquer API externa).
 //  - App (HTML/rotas) = network-first (deploy novo aparece sem hard refresh).
 //  - Estáticos com hash (/assets, ícones) = cache-first (são imutáveis).
-const CACHE = "pega-ai-v4";
+const CACHE = "pega-ai-v5";
 const SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("message", (e) => {
@@ -31,7 +31,9 @@ self.addEventListener("notificationclick", (e) => {
   const url = (e.notification.data && e.notification.data.url) || "/";
   e.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-      for (const c of list) { if ("focus" in c) { c.navigate(url); return c.focus(); } }
+      for (const c of list) {
+        if ("focus" in c) { return c.focus().then((w) => (w && "navigate" in w ? w.navigate(url).catch(() => w) : w)); }
+      }
       return self.clients.openWindow(url);
     }),
   );
@@ -51,7 +53,6 @@ self.addEventListener("activate", (e) => {
 
 function isImmutableStatic(url) {
   return (
-    url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/assets/") ||
     url.pathname.startsWith("/fonts/") ||
     url.pathname.startsWith("/icons/") ||
@@ -66,7 +67,7 @@ self.addEventListener("fetch", (e) => {
   let url;
   try { url = new URL(request.url); } catch { return; }
 
-  // 1) Cross-origin (Supabase e qualquer outra API): não intercepta. Sempre rede.
+  // 1) Cross-origin (Firebase e qualquer outra API): não intercepta. Sempre rede.
   if (url.origin !== self.location.origin) return;
 
   // 2) Estáticos imutáveis: cache-first.
@@ -85,7 +86,7 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // 3) Resto do app (navegação, HTML, RSC, dados do Next): network-first com fallback offline.
+  // 3) Resto do app (navegação, HTML): network-first com fallback offline.
   e.respondWith(
     fetch(request)
       .then((res) => {
