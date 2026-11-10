@@ -156,7 +156,7 @@ function highlight(text: string, q: string) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-3 pb-1.5 pt-3 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">
+    <p className="px-3 pb-1.5 pt-3 text-[12px] font-medium text-text-3">
       {children}
     </p>
   );

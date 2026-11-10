@@ -1,6 +1,9 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import {
+  getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  type Firestore,
+} from "firebase/firestore";
 
 /**
  * Cliente Firebase (browser).
@@ -29,6 +32,24 @@ const config = {
 
 export const hasFirebase = Boolean(config.apiKey && config.projectId && config.appId);
 
+/**
+ * Firestore com cache offline persistente (IndexedDB), compartilhado entre abas:
+ *  - o app abre offline com os últimos dados;
+ *  - alterações feitas sem internet ficam na fila e são enviadas quando a conexão volta,
+ *    mesmo se o app for fechado e reaberto (antes elas morriam na memória).
+ * Se o navegador não suportar IndexedDB (ex.: modo privado), cai para o cache em memória.
+ */
+function createDb(app: FirebaseApp): Firestore {
+  try {
+    return initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch {
+    // já inicializado (HMR) ou persistência indisponível
+    return getFirestore(app);
+  }
+}
+
 let app: FirebaseApp | null = null;
 let _auth: Auth | null = null;
 let _db: Firestore | null = null;
@@ -36,7 +57,7 @@ let _db: Firestore | null = null;
 if (hasFirebase && typeof window !== "undefined") {
   app = getApps().length ? getApp() : initializeApp(config as Required<typeof config>);
   _auth = getAuth(app);
-  _db = getFirestore(app);
+  _db = createDb(app);
 }
 
 export const auth = _auth;

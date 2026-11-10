@@ -1,6 +1,18 @@
 "use client";
 import { cn } from "@/lib/cn";
 
+/** Torna um <div> clicável acessível por teclado (Enter/Espaço) e leitores de tela. */
+export function clickableProps(onClick: () => void) {
+  return {
+    role: "button" as const,
+    tabIndex: 0,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.target !== e.currentTarget) return; // não captura teclas de controles internos
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); }
+    },
+  };
+}
+
 export function Card({
   children,
   className,
@@ -15,6 +27,7 @@ export function Card({
   return (
     <div
       onClick={onClick}
+      {...(onClick ? clickableProps(onClick) : {})}
       className={cn(
         "rounded-lg border border-border p-5",
         elevated ? "bg-surface-hi" : "bg-surface",

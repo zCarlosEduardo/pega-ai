@@ -23,7 +23,7 @@ export function MedDetail({ id }: { id: string }) {
     <div className="absolute inset-0 z-40 flex flex-col bg-bg anim-screen">
       <StatusBar />
       <div className="flex items-center justify-between px-4 py-2">
-        <button onClick={close} className="grid h-9 w-9 place-items-center rounded-full text-text-2 hover:bg-surface">
+        <button onClick={close} className="grid h-9 w-9 place-items-center rounded-full text-text-2 hover:bg-surface" aria-label="Voltar">
           <ChevronLeft size={22} />
         </button>
         <div className="flex items-center gap-2">
@@ -64,7 +64,7 @@ export function MedDetail({ id }: { id: string }) {
           </div>
         </div>
 
-        <p className="mb-2 mt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Detalhes</p>
+        <p className="mb-2 mt-6 text-[12px] font-medium text-text-3">Detalhes</p>
         <div className="overflow-hidden rounded-md border border-border bg-surface">
           <DetailRow label="Frequência" value={med.freqLabel} />
           <DetailRow label="Início" value={med.startLabel} />
@@ -73,7 +73,7 @@ export function MedDetail({ id }: { id: string }) {
           )}
         </div>
 
-        <p className="mb-2 mt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Horários de hoje</p>
+        <p className="mb-2 mt-6 text-[12px] font-medium text-text-3">Horários de hoje</p>
         <div className="space-y-2">
           {med.times.map((hhmm) => {
             const taken = !!(s.meds.find((m) => m.id === med.id) as any)?.taken?.[intakeKey(tKey, hhmm)];
@@ -96,7 +96,7 @@ export function MedDetail({ id }: { id: string }) {
           })}
         </div>
 
-        <p className="mb-2 mt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Últimos 7 dias</p>
+        <p className="mb-2 mt-6 text-[12px] font-medium text-text-3">Últimos 7 dias</p>
         <div className="flex gap-1.5">
           {med.last7.map((d, i) => (
             <span key={i} className={cn(
@@ -229,7 +229,7 @@ export function NewMed({ editId }: { editId?: string } = {}) {
 
         {/* Preview de horários calculados */}
         <div className="mt-3 rounded-md border border-border bg-surface px-4 py-3">
-          <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Horários calculados</p>
+          <p className="text-[12px] font-medium text-text-3">Horários calculados</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {previewTimes.map((t) => (
               <span key={t} className="rounded-md border border-border bg-surface-hi px-2.5 py-1 font-mono text-[13px]">{t}</span>

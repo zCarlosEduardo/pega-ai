@@ -17,7 +17,9 @@ export function Checkbox({
       onClick={() => onChange?.(!checked)}
       style={{ width: size, height: size }}
       className={cn(
-        "grid place-items-center rounded-[7px] border transition-all duration-[120ms] ease-out shrink-0",
+        "relative grid place-items-center rounded-[7px] border transition-all duration-[120ms] ease-out shrink-0",
+        // amplia a área de toque (mín. ~44 px) sem alterar o tamanho visual
+        "before:absolute before:-inset-[11px] before:content-['']",
         checked
           ? "bg-accent border-accent anim-reward"
           : "bg-transparent border-border hover:border-text-3",

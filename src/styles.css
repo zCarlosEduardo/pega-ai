@@ -94,8 +94,8 @@
 
   /* texto & bordas */
   --text: oklch(0.9442 0.0053 286.3);
-  --text-2: oklch(0.6949 0.0176 278.38);
-  --text-3: oklch(0.5053 0.0175 277.56);
+  --text-2: oklch(0.77 0.0176 278.38);
+  --text-3: oklch(0.63 0.0175 277.56); /* >= 4.5:1 sobre bg, surface e surface-hi */
   --border: oklch(0.2544 0.0191 276.1);
   --ink: oklch(0.1468 0.0086 285.29);
 

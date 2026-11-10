@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { PersonColor } from "@/lib/cn";
-import { AppData, DateType, List, Med, MedFreq, Person } from "@/lib/types";
+import { Activity, AppData, DateType, List, Med, MedFreq, Person } from "@/lib/types";
 import { hasFirebase } from "@/lib/firebase";
 import { EMPTY_DATA } from "@/lib/seed";
 import { Recurrence } from "@/lib/dates";
@@ -18,10 +18,26 @@ type Week = { pct: number; done: number; total: number; perPerson: { name: strin
 type DateInput = { title: string; startISO: string; endISO?: string; type: DateType; color: PersonColor };
 type DateFull = DateInput & { recurrence: Recurrence; reminder: string };
 
+export type Toast = { id: number; msg: string; tone: "error" | "info" };
+
 type Store = AppData & {
+  /** false enquanto auth, vínculo com o espaço e a 1ª carga dos dados não terminaram (ou deram erro). */
   ready: boolean; authed: boolean; hasSpace: boolean; onboarding: boolean; configured: boolean;
+  /** erro que impede o app de abrir (rede, permissão, timeout). Use retryBoot() para tentar de novo. */
+  bootError: string | null;
+  /** problema depois que o app já abriu (ex.: uma coleção sem permissão). */
+  syncWarning: string | null;
+  retryBoot: () => void;
+  /** true quando há escritas (ex.: listas/itens criados) que não chegaram ao servidor há mais de alguns segundos */
+  unsynced: boolean;
+  diag: {
+    spaceId: string | null; uid: string | null; projectId: string;
+    listas: number; listasOcultas: number; itens: number; itensSemLista: number;
+    pendente: boolean; doCache: boolean;
+  };
+  toast: Toast | null; notify: (msg: string, tone?: Toast["tone"]) => void; dismissToast: () => void;
   me: Person; partner: Person; personById: (id?: string) => Person | undefined;
-  streak: number; week: Week; stats: { sequencia: number; tarefas: number; conquistas: number };
+  week: Week; stats: { sequencia: number; pendentes: number; tarefas: number; conquistas: number };
   signIn: (email: string, pass: string) => Promise<{ error?: string; hasSpace: boolean }>;
   register: (email: string, pass: string) => Promise<{ error?: string }>;
   beginOnboarding: () => void; finishOnboarding: () => void;
@@ -31,8 +47,8 @@ type Store = AppData & {
   persistDates: (entries: DateInput[]) => Promise<void>;
   signOutFlow: () => Promise<void>;
   addList: (name: string, shared: boolean) => Promise<string | null>;
-  renameList: (listId: string, name: string) => Promise<void>;
-  deleteList: (listId: string) => Promise<void>;
+  renameList: (listId: string, name: string) => Promise<boolean>;
+  deleteList: (listId: string) => Promise<boolean>;
   toggleItem: (listId: string, itemId: string) => void;
   toggleItemMember: (listId: string, itemId: string, memberId: string) => void;
   addItem: (listId: string, text: string, opts?: { assignee?: string; everyone?: boolean }) => Promise<void>;
@@ -95,13 +111,39 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [spaceIds, setSpaceIds] = useState<string[]>([]);
   const emailRef = useRef("");
+  const [activity, setActivity] = useState<Activity[]>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [syncWarning, setSyncWarning] = useState<string | null>(null);
+  const [bootNonce, setBootNonce] = useState(0);
+  const [meta, setMeta] = useState({ listsPending: false, itemsPending: false, fromCache: false });
+  const [unsynced, setUnsynced] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const toastSeq = useRef(0);
+  const notify = useCallback((msg: string, tone: Toast["tone"] = "error") => {
+    setToast({ id: ++toastSeq.current, msg, tone });
+  }, []);
+  const dismissToast = useCallback(() => setToast(null), []);
+  const retryBoot = useCallback(() => setBootNonce((n) => n + 1), []);
 
   // monta a AppData mesclando listas + itens; deriva meds (próximo horário, adesão, etc.)
   const data: AppData = useMemo(() => {
-    const lists: List[] = rawLists.map((l) => ({
-      ...l,
-      items: items.filter((it) => it.listId === l.id).sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
-    }));
+    // agrupa os itens por lista uma única vez (antes era um filter por lista a cada snapshot)
+    const byList = new Map<string, db.RawItem[]>();
+    for (const it of items) {
+      const arr = byList.get(it.listId);
+      if (arr) arr.push(it); else byList.set(it.listId, [it]);
+    }
+    const uid = db.currentUserId();
+    // listas "Minhas" de outra pessoa não aparecem (listas antigas, sem dono, continuam visíveis).
+    // Obs.: é filtro de interface; as regras do Firestore ainda permitem leitura a qualquer membro.
+    const lists: List[] = rawLists
+      .filter((l) => l.shared || !l.ownerId || l.ownerId === uid)
+      .map((l) => ({
+        ...l,
+        items: (byList.get(l.id) ?? []).slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
+      }));
     const meds: Med[] = rawMeds.map((m) => {
       const times = (Array.isArray(m.times) && m.times.length)
         ? m.times
@@ -113,49 +155,95 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         taken: m.taken ?? {}, createdAtISO: m.createdAt?.toDate?.()?.toISOString?.(),
       });
     }).sort((a, b) => a.time.localeCompare(b.time));
-    return { space, people, lists, meds, dates, achievements, activity: [] };
-  }, [space, people, rawLists, items, dates, rawMeds, achievements]);
+    return { space, people, lists, meds, dates, achievements, activity };
+  }, [space, people, rawLists, items, dates, rawMeds, achievements, activity]);
 
   const resetData = useCallback(() => {
-    setSpace(EMPTY_DATA.space); setPeople([]); setRawLists([]); setItems([]); setDates([]); setRawMeds([]); setAchievements([]);
+    setSpace(EMPTY_DATA.space); setPeople([]); setRawLists([]); setItems([]); setDates([]); setRawMeds([]); setAchievements([]); setActivity([]);
+    setDataLoaded(false); setLoadError(null); setSyncWarning(null);
   }, []);
 
-  /* ---------- bootstrap (auth) ---------- */
+  /* ---------- bootstrap (auth + vínculo com o espaço) ---------- */
   useEffect(() => {
     if (!configured) { setSess({ ready: true, authed: false, hasSpace: false, onboarding: false }); return; }
+    let first = true; // só a 1ª resposta do Auth segura o Splash; as seguintes (login) não desmontam a tela
+    setBootError(null);
+    if (bootNonce > 0) setSess((s) => ({ ...s, ready: false })); // "tentar de novo": volta ao Splash, não ao fluxo de criar espaço
     const unsub = db.onAuth(async (uid) => {
+      const isFirst = first; first = false;
       if (!uid) { resetData(); setSpaceId(null); setSpaceIds([]); setSess({ ready: true, authed: false, hasSpace: false, onboarding: false }); return; }
-      setSess((s) => ({ ...s, ready: true, authed: true }));
+      setSess((s) => ({ ...s, authed: true, ready: isFirst ? false : s.ready }));
       try {
         const { active, ids } = await db.syncMembership();
         setSpaceIds(ids);
         if (active) {
           setSpaceId((prev) => prev ?? active);
-          setSess((s) => ({ ...s, hasSpace: true }));
+          setSess((s) => ({ ...s, ready: true, hasSpace: true }));
         } else {
           setSpaceId(null);
-          setSess((s) => ({ ...s, hasSpace: false }));
+          setSess((s) => ({ ...s, ready: true, hasSpace: false }));
         }
-      } catch { /* mantém o estado atual */ }
+      } catch (e) {
+        // NÃO assume "sem espaço": isso jogaria a pessoa para a criação de um espaço novo.
+        console.error("[bootstrap]", e);
+        setBootError(friendlyDbError(e, "Não foi possível carregar seu espaço."));
+        setSess((s) => ({ ...s, ready: true }));
+      }
     });
     return unsub;
-  }, [configured, resetData]);
+  }, [configured, resetData, bootNonce]);
 
   /* ---------- realtime (onSnapshot) ---------- */
   useEffect(() => {
-    if (!configured || !spaceId || !sess.authed) return;
-    const unsub = db.subscribeSpace(spaceId, (slice) => {
-      if (slice.space) setSpace(slice.space);
-      if (slice.people) setPeople(slice.people);
-      if (slice.lists) setRawLists(slice.lists);
-      if (slice.items) setItems(slice.items);
-      if (slice.dates) setDates(slice.dates);
-      if (slice.meds) setRawMeds(slice.meds);
-      if (slice.achievements) setAchievements(slice.achievements);
-    });
-    return unsub;
-  }, [configured, spaceId, sess.authed]);
+    if (!configured || !spaceId || !sess.authed) { setDataLoaded(false); return; }
+    setDataLoaded(false); setLoadError(null); setSyncWarning(null);
+    const need = ["space", "people", "lists", "items"];
+    const seen = new Set<string>();
+    let loaded = false;
+    const timer = setTimeout(() => {
+      if (!loaded) setLoadError("Está demorando para carregar. Verifique a conexão e tente de novo.");
+    }, 15000);
 
+    const unsub = db.subscribeSpace(
+      spaceId,
+      (slice) => {
+        if ("space" in slice) { if (slice.space) setSpace(slice.space); seen.add("space"); }
+        if (slice.people) { setPeople(slice.people); seen.add("people"); }
+        if (slice.lists) { setRawLists(slice.lists); seen.add("lists"); }
+        if (slice.items) { setItems(slice.items); seen.add("items"); }
+        if (slice.dates) setDates(slice.dates);
+        if (slice.meds) setRawMeds(slice.meds);
+        if (slice.achievements) setAchievements(slice.achievements);
+        if (slice.activity) setActivity(slice.activity);
+        if (slice.meta) {
+          setMeta((m) => ({
+            listsPending: slice.meta?.lists ? slice.meta.lists.pending : m.listsPending,
+            itemsPending: slice.meta?.items ? slice.meta.items.pending : m.itemsPending,
+            fromCache: slice.meta?.lists ? slice.meta.lists.cache : m.fromCache,
+          }));
+        }
+        if (!loaded && need.every((k) => seen.has(k))) {
+          loaded = true; clearTimeout(timer);
+          setLoadError(null); setDataLoaded(true);
+        }
+      },
+      (e) => {
+        const msg = friendlyDbError({ code: e.code, message: e.message }, "Falha ao sincronizar.");
+        if (e.core && !loaded) setLoadError(msg);
+        else setSyncWarning(msg);
+      },
+    );
+    return () => { clearTimeout(timer); unsub(); };
+  }, [configured, spaceId, sess.authed, bootNonce]);
+
+
+  // escritas pendentes por mais de 8 s = não estão chegando ao servidor (offline, bloqueio ou regra negando)
+  const hasPending = meta.listsPending || meta.itemsPending;
+  useEffect(() => {
+    if (!hasPending) { setUnsynced(false); return; }
+    const t = setTimeout(() => setUnsynced(true), 8000);
+    return () => clearTimeout(t);
+  }, [hasPending]);
 
   const api = useMemo<Store>(() => {
     const me = people.find((p) => p.isMe) ?? people[0] ?? PLACEHOLDER_ME;
@@ -164,23 +252,61 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const week = deriveWeek(data, people);
     const tarefas = data.lists.flatMap((l) => l.items).filter((i) => i.done).length;
     const conquistas = achievements.filter((a) => a.unlocked).length;
-    const streak = 0;
+    // sequência: vale se o último dia contado foi hoje ou ontem; senão zerou
+    const hoje = todayKey();
+    const ontem = todayKey(new Date(Date.now() - 86400000));
+    const streak = space.streakDay === hoje || space.streakDay === ontem ? (space.streak ?? 0) : 0;
+    const bumpStreak = () => {
+      if (!spaceId || space.streakDay === hoje) return;
+      const next = space.streakDay === ontem ? (space.streak ?? 0) + 1 : 1;
+      db.dbSetStreak(spaceId, next, hoje).catch((e) => console.error("[streak]", e?.message ?? e));
+    };
+    const pendentes = data.lists.flatMap((l) => l.items).filter((i) => !i.done).length;
     const sid = spaceId;
+    const fail = (msg: string) => (e: any) => { console.error(`[${msg}]`, e?.message ?? e); notify(msg); };
+    /**
+     * Espera o servidor confirmar, mas no máximo 2,5 s. Offline a escrita fica na fila local
+     * (o cache persistente a envia depois), então seguimos como "salvo". Se o servidor RECUSAR
+     * (regra, permissão), avisa com um toast mesmo depois de a tela já ter seguido.
+     * Resolve false só quando a recusa chega antes do prazo.
+     */
+    const settle = (p: Promise<unknown>, msg: string) =>
+      new Promise<boolean>((resolve) => {
+        let settled = false;
+        const finish = (ok: boolean) => { if (!settled) { settled = true; resolve(ok); } };
+        const timer = setTimeout(() => finish(true), 2500);
+        p.then(() => { clearTimeout(timer); finish(true); })
+          .catch((e) => { clearTimeout(timer); fail(msg)(e); finish(false); });
+      });
 
     return {
       ...data,
-      ready: sess.ready, authed: sess.authed, hasSpace: sess.hasSpace, onboarding: sess.onboarding, configured,
-      me, partner, personById, streak, week, stats: { sequencia: streak, tarefas, conquistas },
+      // pronto = Auth resolvido + vínculo com o espaço resolvido + 1ª carga das listas/pessoas feita (ou erro a exibir)
+      ready: sess.ready && (sess.onboarding || !sess.authed || !sess.hasSpace || dataLoaded || !!loadError || !!bootError),
+      authed: sess.authed, hasSpace: sess.hasSpace, onboarding: sess.onboarding, configured,
+      bootError: bootError ?? (!dataLoaded && sess.hasSpace && !sess.onboarding ? loadError : null),
+      syncWarning, retryBoot, toast, notify, dismissToast, unsynced,
+      diag: {
+        spaceId: sid, uid: db.currentUserId(), projectId: String(import.meta.env.VITE_FIREBASE_PROJECT_ID ?? ""),
+        listas: rawLists.length, listasOcultas: rawLists.length - data.lists.length,
+        itens: items.length, itensSemLista: items.filter((i) => !rawLists.some((l) => l.id === i.listId)).length,
+        pendente: hasPending, doCache: meta.fromCache,
+      },
+      me, partner, personById, week, stats: { sequencia: streak, pendentes, tarefas, conquistas },
 
       signIn: async (email, pass) => {
         emailRef.current = email;
         const { error } = await db.signIn(email, pass);
         if (error) return { error, hasSpace: false };
-        const { active, ids } = await db.syncMembership();
-        setSpaceIds(ids);
-        setSpaceId(active);
-        setSess({ ready: true, authed: true, hasSpace: !!active, onboarding: false });
-        return { hasSpace: !!active };
+        try {
+          const { active, ids } = await db.syncMembership();
+          setSpaceIds(ids);
+          setSpaceId(active);
+          setSess({ ready: true, authed: true, hasSpace: !!active, onboarding: false });
+          return { hasSpace: !!active };
+        } catch (e) {
+          return { error: friendlyDbError(e, "Não foi possível carregar seu espaço. Tente de novo."), hasSpace: false };
+        }
       },
       register: async (email, pass) => {
         emailRef.current = email;
@@ -220,31 +346,39 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (!sid2) return;
         for (const e of valid) {
           const recurrence = recurrenceFor(e.type);
-          await db.dbAddDate(sid2, {
+          await settle(db.dbAddDate(sid2, {
             title: e.title.trim(), startISO: e.startISO, endISO: e.endISO, type: e.type, color: e.color,
             recurrence, reminder: recurrence === "Todo ano" ? "7 dias antes" : "3 dias antes",
-          });
+          }).done, "Não foi possível salvar a data.");
         }
       },
       signOutFlow: async () => { await db.signOut(); /* onAuth limpa o resto */ },
 
       addList: async (name, shared) => {
         if (!sid) return null;
-        try {
-          const { id } = await db.dbAddList(sid, name, shared, shared ? undefined : me.id, rawLists.length);
-          return id;
-        } catch { return null; }
+        const position = rawLists.reduce((m, l) => Math.max(m, (l.position ?? -1) + 1), 0);
+        const { id, done } = db.dbAddList(sid, name, shared, shared ? undefined : me.id, position);
+        return (await settle(done, "Não foi possível criar a lista. Tente de novo.")) ? id : null;
       },
-      renameList: async (listId, name) => { if (sid) await db.dbRenameList(sid, listId, name).catch(() => {}); },
-      deleteList: async (listId) => { if (sid) await db.dbDeleteList(sid, listId).catch(() => {}); },
+      renameList: async (listId, name) => {
+        if (!sid) return false;
+        return settle(db.dbRenameList(sid, listId, name), "Não foi possível renomear a lista.");
+      },
+      deleteList: async (listId) => {
+        if (!sid) return false;
+        return settle(db.dbDeleteList(sid, listId), "Não foi possível excluir a lista. Tente de novo.");
+      },
 
       toggleItem: (listId, itemId) => {
         if (!sid) return;
         const it = items.find((x) => x.id === itemId);
         if (!it) return;
         const newDone = !it.done;
-        db.dbToggleItem(sid, itemId, newDone).catch((e) => console.error("[toggleItem]", e.message));
-        if (newDone) db.dbLogActivity(sid, { text: `concluiu "${it.text}"`, type: "item_done", done: true });
+        db.dbToggleItem(sid, itemId, newDone).catch(fail("Não foi possível atualizar o item."));
+        if (newDone) {
+          db.dbLogActivity(sid, { text: `concluiu "${it.text}"`, type: "item_done", done: true });
+          bumpStreak();
+        }
       },
       toggleItemMember: (listId, itemId, memberId) => {
         if (!sid) return;
@@ -254,53 +388,61 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const checking = !cur.includes(memberId);
         const next = checking ? [...cur, memberId] : cur.filter((x) => x !== memberId);
         const done = next.length >= (people.length || 1);
-        db.dbSetItemDoneBy(sid, itemId, next, done).catch((e) => console.error("[toggleItemMember]", e.message));
-        if (checking) db.dbLogActivity(sid, { text: `pegou "${it.text}"`, type: "item_done", done });
+        db.dbSetItemDoneBy(sid, itemId, next, done).catch(fail("Não foi possível atualizar o item."));
+        if (checking) {
+          db.dbLogActivity(sid, { text: `pegou "${it.text}"`, type: "item_done", done });
+          bumpStreak();
+        }
       },
       addItem: async (listId, text, opts) => {
         if (!sid) return;
         const everyone = !!opts?.everyone;
-        const pos = items.filter((i) => i.listId === listId).length || 0;
-        await db.dbAddItem(sid, listId, text, everyone ? undefined : opts?.assignee, pos, everyone).catch((e) => console.error("[addItem]", e.message));
+        let pos = 0;
+        for (const i of items) if (i.listId === listId && i.position >= pos) pos = i.position + 1;
+        const added = db.dbAddItem(sid, listId, text, everyone ? undefined : opts?.assignee, pos, everyone);
+        if (!(await settle(added.done, "Não foi possível adicionar o item."))) return;
         db.dbLogActivity(sid, { text: `adicionou "${text}"`, type: "item_add" });
       },
       updateItem: async (listId, itemId, patch) => {
         if (!sid) return;
-        await db.dbUpdateItem(sid, itemId, { text: patch.text, assignee: patch.assignee === undefined ? undefined : patch.assignee ?? null, everyone: patch.everyone }).catch((e) => console.error("[updateItem]", e.message));
+        await settle(db.dbUpdateItem(sid, itemId, { text: patch.text, assignee: patch.assignee === undefined ? undefined : patch.assignee ?? null, everyone: patch.everyone }), "Não foi possível salvar o item.");
       },
-      deleteItem: async (listId, itemId) => { if (sid) await db.dbDeleteItem(sid, itemId).catch(() => {}); },
+      deleteItem: async (listId, itemId) => { if (sid) await settle(db.dbDeleteItem(sid, itemId), "Não foi possível excluir o item."); },
 
-      addDate: async (d0) => { if (sid) { await db.dbAddDate(sid, { ...d0 }).catch((e) => console.error("[addDate]", e.message)); db.dbLogActivity(sid, { text: `adicionou a data "${d0.title}"`, type: "date_add" }); } },
-      updateDate: async (id, d0) => { if (sid) await db.dbUpdateDate(sid, id, { ...d0 }).catch((e) => console.error("[updateDate]", e.message)); },
-      deleteDate: async (id) => { if (sid) await db.dbDeleteDate(sid, id).catch(() => {}); },
+      addDate: async (d0) => {
+        if (!sid) return;
+        if (!(await settle(db.dbAddDate(sid, { ...d0 }).done, "Não foi possível salvar a data."))) return;
+        db.dbLogActivity(sid, { text: `adicionou a data "${d0.title}"`, type: "date_add" });
+      },
+      updateDate: async (id, d0) => { if (sid) await settle(db.dbUpdateDate(sid, id, { ...d0 }), "Não foi possível salvar a data."); },
+      deleteDate: async (id) => { if (sid) await settle(db.dbDeleteDate(sid, id), "Não foi possível excluir a data."); },
 
       addMed: async (m) => {
         if (!sid) return null;
-        try {
-          const times = computeTimes(m);
-          const id = await db.dbAddMed(sid, {
-            name: m.name.trim(), dose: m.dose.trim(), assignee: m.assignee,
-            freq: m.freq, everyXHours: m.everyXHours, startHour: m.startHour,
-            durationHours: m.durationHours, times, notify: m.notify, stock: m.stock,
-          });
-          db.dbLogActivity(sid, { text: `adicionou o remédio "${m.name.trim()}"`, type: "med_add" });
-          return id;
-        } catch (e: any) { console.error("[addMed]", e?.message); return null; }
+        const times = computeTimes(m);
+        const added = db.dbAddMed(sid, {
+          name: m.name.trim(), dose: m.dose.trim(), assignee: m.assignee,
+          freq: m.freq, everyXHours: m.everyXHours, startHour: m.startHour,
+          durationHours: m.durationHours, times, notify: m.notify, stock: m.stock,
+        });
+        if (!(await settle(added.done, "Não foi possível salvar o remédio."))) return null;
+        db.dbLogActivity(sid, { text: `adicionou o remédio "${m.name.trim()}"`, type: "med_add" });
+        return added.id;
       },
       updateMed: async (id, m) => {
         if (!sid) return;
         const times = computeTimes(m);
-        await db.dbUpdateMed(sid, id, {
+        await settle(db.dbUpdateMed(sid, id, {
           name: m.name.trim(), dose: m.dose.trim(), assignee: m.assignee,
           freq: m.freq, everyXHours: m.everyXHours, startHour: m.startHour,
           durationHours: m.durationHours, times, notify: m.notify, stock: m.stock,
-        }).catch((e) => console.error("[updateMed]", e?.message));
+        }), "Não foi possível salvar o remédio.");
       },
-      deleteMed: async (id) => { if (sid) await db.dbDeleteMed(sid, id).catch(() => {}); },
+      deleteMed: async (id) => { if (sid) await settle(db.dbDeleteMed(sid, id), "Não foi possível excluir o remédio."); },
       toggleMedIntake: async (id, hhmm, taken) => {
         if (!sid) return;
         const key = intakeKey(todayKey(), hhmm);
-        await db.dbMarkIntake(sid, id, key, taken).catch((e) => console.error("[intake]", e?.message));
+        await settle(db.dbMarkIntake(sid, id, key, taken), "Não foi possível registrar a dose.");
       },
 
       setMyColor: (c) => { if (sid && me.id) db.dbUpdateMember(sid, me.id, { color: c }).catch((e) => console.error("[setMyColor]", e.message)); },
@@ -341,7 +483,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         } catch (e: any) { return { error: friendlyDbError(e, "Erro ao sair do espaço") }; }
       },
     };
-  }, [data, people, achievements, sess, configured, spaceId, spaceIds, items, rawLists]);
+  }, [data, space, people, achievements, sess, configured, spaceId, spaceIds, items, rawLists, dataLoaded, loadError, bootError, syncWarning, toast, retryBoot, notify, dismissToast, unsynced, meta, hasPending]);
 
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;

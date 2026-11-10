@@ -19,27 +19,47 @@ service cloud.firestore {
       allow read, write: if signedIn() && userId == uid();
     }
 
-    // convites: lookup/preview por código. Qualquer autenticado lê (precisa pra entrar).
-    // O código é aleatório (PEGA-XXXX), então não dá pra "varrer" espaços.
+    // convites: o código (PEGA-XXXX) é a "chave" para entrar.
+    //  - get: qualquer autenticado que SAIBA o código (precisa para entrar).
+    //  - list: negado, ninguém consegue varrer/enumerar os convites.
+    //  - create: só ao criar o espaço (o próprio batch cria o membro; existsAfter enxerga o batch),
+    //            e só com os 3 campos esperados. Create nunca sobrescreve: se o código já existe, falha.
+    //  - update/delete: só o admin do espaço dono do convite (antes qualquer logado podia
+    //            reescrever ou apagar o convite de outro espaço).
     match /invites/{code} {
-      allow read: if signedIn();
-      allow create: if signedIn();
-      allow update: if signedIn();   // permite admin re-gerar/atualizar nome
-      allow delete: if signedIn();   // permite cleanup ao deletar espaço (futuro)
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['spaceId', 'spaceName', 'adminName'])
+        && request.resource.data.spaceId is string
+        && request.resource.data.spaceName is string
+        && request.resource.data.adminName is string
+        && existsAfter(/databases/$(database)/documents/spaces/$(request.resource.data.spaceId)/members/$(uid()));
+      allow update, delete: if signedIn() && isAdmin(resource.data.spaceId);
     }
 
     match /spaces/{spaceId} {
       allow read:   if isMember(spaceId);
       allow create: if signedIn();              // ao criar, o batch também cria o seu member
-      allow update: if isMember(spaceId);
+      // membros editam o espaço (ex.: nome), mas não trocam o código de convite
+      allow update: if isMember(spaceId)
+        && request.resource.data.inviteCode == resource.data.inviteCode;
       allow delete: if false;
 
-      // membros: você cria/edita o seu próprio doc.
-      // delete: você mesmo OU admin do espaço (pra "remover pessoa").
+      // membros:
+      //  - create: só o seu próprio doc. Ninguém entra como admin em espaço que já existe
+      //            (admin só no batch que cria o espaço, quando o espaço ainda não existe).
+      //  - update: só o seu próprio doc, sem mudar o papel (role) nem o userId.
+      //  - delete: você mesmo OU admin do espaço (pra "remover pessoa").
       match /members/{memberId} {
-        allow read:                if isMember(spaceId);
-        allow create, update:      if signedIn() && memberId == uid();
-        allow delete:              if signedIn() && (memberId == uid() || isAdmin(spaceId));
+        allow read:   if isMember(spaceId);
+        allow create: if signedIn() && memberId == uid()
+          && (request.resource.data.role == 'member'
+              || !exists(/databases/$(database)/documents/spaces/$(spaceId)));
+        allow update: if signedIn() && memberId == uid()
+          && request.resource.data.get('role', 'member') == resource.data.get('role', 'member')
+          && request.resource.data.get('userId', memberId) == resource.data.get('userId', memberId);
+        allow delete: if signedIn() && (memberId == uid() || isAdmin(spaceId));
       }
 
       // dados do espaço: só membros
@@ -49,9 +69,10 @@ service cloud.firestore {
       match /meds/{medId}        { allow read, write: if isMember(spaceId); }
       match /achievements/{aId}  { allow read, write: if isMember(spaceId); }
       match /activity/{actId}    { allow read, write: if isMember(spaceId); }
+      // a inscrição de push contém as chaves do aparelho: só a própria pessoa lê/escreve.
+      // (o servidor de notificações usa o Admin SDK e ignora estas regras)
       match /pushSubs/{subUid}   {
-        allow read:  if isMember(spaceId);
-        allow write: if signedIn() && subUid == uid();
+        allow read, write: if signedIn() && subUid == uid() && isMember(spaceId);
       }
     }
   }

@@ -32,7 +32,7 @@ export function HomeScreen() {
       {/* header */}
       <div className="flex items-start justify-between pt-2">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-3">{dateStr}</p>
+          <p className="text-[12px] font-medium text-text-3">{dateStr}</p>
           <h1 className="mt-1 text-[26px] font-semibold leading-tight">{greet}, {s.me.name}</h1>
         </div>
         <button onClick={() => open({ kind: "settings" })} className="flex -space-x-2 pt-1">
@@ -53,10 +53,10 @@ export function HomeScreen() {
           </div>
         </ProgressRing>
         <div className="flex-1">
-          <p className="text-[15px] font-semibold">Progresso da semana</p>
+          <p className="text-[15px] font-semibold">Progresso das listas</p>
           <p className="mt-0.5 text-[13px] text-text-2">
             {s.week.total > 0 ? (
-              <>Vocês concluíram <span className="text-text font-medium">{s.week.done} de {s.week.total}</span> tarefas juntos.</>
+              <>Vocês concluíram <span className="text-text font-medium">{s.week.done} de {s.week.total}</span> tarefas juntos.{s.stats.sequencia > 1 ? ` Sequência de ${s.stats.sequencia} dias.` : ""}</>
             ) : (
               <>Criem uma lista compartilhada pra começar a contar.</>
             )}
@@ -77,11 +77,11 @@ export function HomeScreen() {
       {/* stats */}
       <div className="mt-3 grid grid-cols-2 gap-3">
         <Card className="py-4">
-          <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Sequência</p>
-          <p className="mt-1"><span className="font-mono text-[28px] font-semibold">{s.streak}</span><span className="ml-1 text-[13px] text-text-2">dias</span></p>
+          <p className="text-[12px] font-medium text-text-3">A fazer</p>
+          <p className="mt-1"><span className="font-mono text-[28px] font-semibold">{s.stats.pendentes}</span><span className="ml-1 text-[13px] text-text-2">itens</span></p>
         </Card>
         <Card className="py-4" onClick={() => setTab("agenda")}>
-          <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Próxima data</p>
+          <p className="text-[12px] font-medium text-text-3">Próxima data</p>
           <p className="mt-1">
             <span className="font-mono text-[28px] font-semibold">{nextDate ? nextDate.daysAway : "—"}</span>
             <span className="ml-1 text-[13px] text-text-2">{nextDate ? "dias" : ""}</span>
@@ -133,8 +133,11 @@ export function HomeScreen() {
                   ) : (
                     <Avatar name={who?.name ?? "?"} color={who?.color} size={28} />
                   )}
-                  <p className="flex-1 text-[13px] text-text-2">{a.text}</p>
-                  <span className="text-[12px] text-text-3">{a.when}</span>
+                  <p className="flex-1 text-[13px] text-text-2">
+                    {who && <span className="font-medium text-text">{who.name.split(" ")[0]} </span>}
+                    {a.text}
+                  </p>
+                  <span className="text-[12px] text-text-3">{relTime(a.when)}</span>
                 </div>
               );
             })}
@@ -143,6 +146,22 @@ export function HomeScreen() {
       )}
     </div>
   );
+}
+
+/** "agora", "há 5 min", "há 3 h", "ontem" ou "12 nov" a partir de um ISO */
+function relTime(iso: string) {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "";
+  const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h} h`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return "ontem";
+  if (d < 7) return `há ${d} dias`;
+  const dt = new Date(t);
+  return `${dt.getDate()} ${MM[dt.getMonth()]}`;
 }
 
 function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {

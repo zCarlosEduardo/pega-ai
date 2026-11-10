@@ -12,6 +12,7 @@ import { cn, PERSON_HEX } from "@/lib/cn";
 import type { ListItem } from "@/lib/types";
 
 const DOT: Record<string, string> = { success: "bg-success", accent: "bg-accent", warning: "bg-warning" };
+const PAGE = 80;
 
 export function ListDetail({ id }: { id: string }) {
   const s = useStore();
@@ -25,6 +26,9 @@ export function ListDetail({ id }: { id: string }) {
 
   const [listSheet, setListSheet] = useState(false);
   const [listName, setListName] = useState("");
+  // listas grandes: renderiza em blocos para não travar o aparelho
+  const [todoLimit, setTodoLimit] = useState(PAGE);
+  const [doneLimit, setDoneLimit] = useState(PAGE);
 
   const list = s.lists.find((l) => l.id === id);
   if (!list) return null;
@@ -65,11 +69,15 @@ export function ListDetail({ id }: { id: string }) {
     setListSheet(true);
   }
   async function saveListName() {
-    if (listName.trim() && listName.trim() !== list!.name) await s.renameList(list!.id, listName.trim());
+    if (listName.trim() && listName.trim() !== list!.name) {
+      const ok = await s.renameList(list!.id, listName.trim());
+      if (!ok) return; // erro já avisado; mantém a janela aberta
+    }
     setListSheet(false);
   }
   async function removeList() {
-    await s.deleteList(list!.id);
+    const ok = await s.deleteList(list!.id);
+    if (!ok) return; // erro já avisado; a lista continua existindo
     setListSheet(false);
     close();
   }
@@ -78,10 +86,10 @@ export function ListDetail({ id }: { id: string }) {
     <div className="absolute inset-0 z-40 flex flex-col bg-bg anim-screen">
       <StatusBar />
       <div className="flex items-center justify-between px-4 py-2">
-        <button onClick={close} className="grid h-9 w-9 place-items-center rounded-full text-text-2 hover:bg-surface">
+        <button onClick={close} aria-label="Voltar" className="grid h-10 w-10 place-items-center rounded-full text-text-2 hover:bg-surface">
           <ChevronLeft size={22} />
         </button>
-        <button onClick={openListMenu} className="grid h-9 w-9 place-items-center rounded-full text-text-2 hover:bg-surface" aria-label="Opções da lista">
+        <button onClick={openListMenu} className="grid h-10 w-10 place-items-center rounded-full text-text-2 hover:bg-surface" aria-label="Opções da lista">
           <MoreVertical size={20} />
         </button>
       </div>
@@ -107,23 +115,29 @@ export function ListDetail({ id }: { id: string }) {
 
         {todo.length > 0 && (
           <>
-            <p className="mb-2 mt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">A fazer · {todo.length}</p>
+            <p className="mb-2 mt-6 text-[12px] font-medium text-text-3">A fazer · {todo.length}</p>
             <div className="space-y-2">
-              {todo.map((it) => (
+              {todo.slice(0, todoLimit).map((it) => (
                 <ItemRow key={it.id} listId={list.id} item={it} onEdit={() => openEdit(it)} />
               ))}
             </div>
+            {todo.length > todoLimit && (
+              <MoreButton hidden={todo.length - todoLimit} onClick={() => setTodoLimit((n) => n + PAGE)} />
+            )}
           </>
         )}
 
         {done.length > 0 && (
           <>
-            <p className="mb-2 mt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Concluídos · {done.length}</p>
+            <p className="mb-2 mt-6 text-[12px] font-medium text-text-3">Concluídos · {done.length}</p>
             <div className="space-y-2">
-              {done.map((it) => (
+              {done.slice(0, doneLimit).map((it) => (
                 <ItemRow key={it.id} listId={list.id} item={it} onEdit={() => openEdit(it)} />
               ))}
             </div>
+            {done.length > doneLimit && (
+              <MoreButton hidden={done.length - doneLimit} onClick={() => setDoneLimit((n) => n + PAGE)} />
+            )}
           </>
         )}
       </div>
@@ -139,7 +153,7 @@ export function ListDetail({ id }: { id: string }) {
       <Sheet open={itemSheet} onClose={() => setItemSheet(false)}>
         <h2 className="text-[20px] font-semibold">{editing ? "Editar item" : "Novo item"}</h2>
         <Input className="mt-4" value={text} onChange={setText} placeholder="Azeite de oliva" autoFocus />
-        <p className="mb-2 mt-4 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Quem pega</p>
+        <p className="mb-2 mt-4 text-[12px] font-medium text-text-3">Quem pega</p>
         <div className="flex flex-wrap gap-2">
           <AssignPill label="Qualquer um" active={!everyone && !assignee} onClick={() => { setEveryone(false); setAssignee(undefined); }} />
           {s.people.map((p) => (
@@ -166,7 +180,7 @@ export function ListDetail({ id }: { id: string }) {
       {/* sheet da lista (renomear / excluir) */}
       <Sheet open={listSheet} onClose={() => setListSheet(false)}>
         <h2 className="text-[20px] font-semibold">Lista</h2>
-        <p className="mb-2 mt-4 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Renomear</p>
+        <p className="mb-2 mt-4 text-[12px] font-medium text-text-3">Renomear</p>
         <div className="flex items-center gap-2">
           <Input value={listName} onChange={setListName} className="flex-1" />
           <button onClick={saveListName} className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-accent text-[#0a0a0e]">
@@ -181,6 +195,14 @@ export function ListDetail({ id }: { id: string }) {
   );
 }
 
+function MoreButton({ hidden, onClick }: { hidden: number; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="mt-3 w-full rounded-md border border-border bg-surface py-3 text-[14px] font-medium text-text-2 hover:text-text">
+      Mostrar mais {hidden > PAGE ? PAGE : hidden} de {hidden}
+    </button>
+  );
+}
+
 function ItemRow({ listId, item, onEdit }: { listId: string; item: ListItem; onEdit: () => void }) {
   const s = useStore();
 
@@ -192,7 +214,7 @@ function ItemRow({ listId, item, onEdit }: { listId: string; item: ListItem; onE
           <button onClick={onEdit} className="flex-1 text-left">
             <span className={cn("text-[15px]", item.done ? "text-text-3 line-through" : "text-text")}>{item.text}</span>
           </button>
-          <span className="rounded bg-surface-hi px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-text-3">Todos</span>
+          <span className="rounded bg-surface-hi px-1.5 py-0.5 text-[11px] font-medium text-text-3">Todos</span>
           <button onClick={onEdit} className="grid h-7 w-7 place-items-center rounded text-text-3 hover:text-text-2" aria-label="Editar item">
             <Pencil size={15} />
           </button>

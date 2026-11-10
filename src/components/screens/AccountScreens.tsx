@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/PegaBadge";
 import { Input } from "@/components/ui/PegaInput";
 import { Button } from "@/components/ui/PegaButton";
 import { cn, PERSON_HEX, PersonColor } from "@/lib/cn";
-import { enablePush, disablePush, getPushState, type PushState } from "@/lib/push";
+import { enablePush, disablePush, getPushState, showLocalTest, type PushState } from "@/lib/push";
 import { dbSetNotifyPrefs } from "@/lib/db";
 
 const COLORS: PersonColor[] = ["p1", "p2", "p3", "p4"];
@@ -30,7 +30,7 @@ export function ProfileScreen() {
     <div className="absolute inset-0 z-40 flex flex-col bg-bg anim-screen">
       <StatusBar />
       <div className="px-4 py-2">
-        <button onClick={close} className="grid h-9 w-9 place-items-center rounded-full text-text-2 hover:bg-surface">
+        <button onClick={close} className="grid h-9 w-9 place-items-center rounded-full text-text-2 hover:bg-surface" aria-label="Voltar">
           <ChevronLeft size={22} />
         </button>
       </div>
@@ -57,12 +57,12 @@ export function ProfileScreen() {
         </div>
 
         <div className="mt-6 grid grid-cols-3 gap-3">
-          <Stat n={s.stats.sequencia} label="Sequência" />
+          <Stat n={s.stats.sequencia} label="Sequência (dias)" />
           <Stat n={s.stats.tarefas} label="Tarefas" />
           <Stat n={s.stats.conquistas} label="Conquistas" onClick={() => open({ kind: "achievements" })} />
         </div>
 
-        <p className="mb-2 mt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Sua cor no espaço</p>
+        <p className="mb-2 mt-6 text-[12px] font-medium text-text-3">Sua cor no espaço</p>
         <div className="flex gap-3">
           {COLORS.map((c) => (
             <button key={c} onClick={() => s.setMyColor(c)} className="h-9 w-9 rounded-md transition-transform active:scale-95"
@@ -112,11 +112,10 @@ export function SettingsScreen() {
     daily: s.me.notifyPrefs?.daily ?? false,
   });
   function changeNotif(patch: Partial<typeof notif>) {
-    setNotif((n) => {
-      const next = { ...n, ...patch };
-      dbSetNotifyPrefs(s.space.id, next);
-      return next;
-    });
+    // efeito colateral fora do updater (o React pode chamar o updater duas vezes)
+    const next = { ...notif, ...patch };
+    setNotif(next);
+    dbSetNotifyPrefs(s.space.id, next).catch(() => s.notify("Não foi possível salvar a preferência de notificação."));
   }
 
   const isAdmin = s.me.role === "admin";
@@ -135,7 +134,7 @@ export function SettingsScreen() {
     <div className="absolute inset-0 z-40 flex flex-col bg-bg anim-screen">
       <StatusBar />
       <div className="flex items-center gap-1 px-4 py-2">
-        <button onClick={close} className="grid h-9 w-9 place-items-center rounded-full text-text-2 hover:bg-surface">
+        <button onClick={close} className="grid h-9 w-9 place-items-center rounded-full text-text-2 hover:bg-surface" aria-label="Voltar">
           <ChevronLeft size={22} />
         </button>
         <h1 className="text-[20px] font-semibold">Configurações</h1>
@@ -166,16 +165,30 @@ export function SettingsScreen() {
         </div>
 
         {/* convite */}
-        <p className="mb-2 mt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Convite</p>
+        <p className="mb-2 mt-6 text-[12px] font-medium text-text-3">Convite</p>
         <div className="flex items-center gap-3 rounded-md border border-border bg-surface px-4 py-3.5">
           <div className="flex-1">
-            <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Código do espaço</p>
+            <p className="text-[12px] font-medium text-text-3">Código do espaço</p>
             <p className="mt-1 font-mono text-[18px] font-semibold tracking-[0.1em]">{s.space.inviteCode || "—"}</p>
           </div>
           <button onClick={copyCode} className="grid h-10 w-10 place-items-center rounded-md border border-border text-text-2">
             {copied ? <Check size={18} className="text-success" /> : <Copy size={18} />}
           </button>
         </div>
+
+        {/* diagnóstico de sincronização (para comparar dois aparelhos no mesmo espaço) */}
+        <details className="mt-3 rounded-md border border-border bg-surface px-4 py-3 text-[13px]">
+          <summary className="cursor-pointer font-medium text-text-2">Diagnóstico de sincronização</summary>
+          <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-text-2">
+            <dt>Espaço</dt><dd className="break-all font-mono text-[12px] text-text">{s.diag.spaceId ?? "—"}</dd>
+            <dt>Projeto</dt><dd className="break-all font-mono text-[12px] text-text">{s.diag.projectId || "—"}</dd>
+            <dt>Sua conta</dt><dd className="break-all font-mono text-[12px] text-text">{s.diag.uid ?? "—"}</dd>
+            <dt>Listas</dt><dd className="text-text">{s.diag.listas} no servidor{s.diag.listasOcultas > 0 ? `, ${s.diag.listasOcultas} privada(s) de outra pessoa` : ""}</dd>
+            <dt>Itens</dt><dd className="text-text">{s.diag.itens}{s.diag.itensSemLista > 0 ? ` (${s.diag.itensSemLista} sem lista)` : ""}</dd>
+            <dt>Envio</dt><dd className={s.diag.pendente ? "text-warning" : "text-success"}>{s.diag.pendente ? "há alterações não enviadas" : "tudo enviado"}</dd>
+            <dt>Dados</dt><dd className="text-text">{s.diag.doCache ? "do cache local (sem confirmar com o servidor)" : "confirmados pelo servidor"}</dd>
+          </dl>
+        </details>
 
         <button
           onClick={() => open({ kind: "profile" })}
@@ -190,7 +203,7 @@ export function SettingsScreen() {
         </button>
 
         {/* pessoas */}
-        <p className="mb-2 mt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Pessoas com acesso</p>
+        <p className="mb-2 mt-6 text-[12px] font-medium text-text-3">Pessoas com acesso</p>
         <div className="space-y-2">
           {s.people.map((p) => (
             <div key={p.id} className="flex items-center gap-3 rounded-md border border-border bg-surface px-4 py-3">
@@ -227,7 +240,7 @@ export function SettingsScreen() {
 
 
         {/* notificações */}
-        <p className="mb-2 mt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Notificações</p>
+        <p className="mb-2 mt-6 text-[12px] font-medium text-text-3">Notificações</p>
         <PushControl spaceId={s.space.id} />
         <div className="mt-2 space-y-2">
           <NotifRow label="Lembretes de remédio" checked={notif.med} onChange={(v) => changeNotif({ med: v })} />
@@ -236,7 +249,7 @@ export function SettingsScreen() {
           <NotifRow label="Resumo diário" checked={notif.daily} onChange={(v) => changeNotif({ daily: v })} />
         </div>
 
-        <p className="mb-2 mt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Preferências</p>
+        <p className="mb-2 mt-6 text-[12px] font-medium text-text-3">Preferências</p>
         <button className="flex w-full items-center justify-between rounded-md border border-border bg-surface px-4 py-3.5">
           <span className="text-[15px]">Tema</span>
           <span className="flex items-center gap-1 text-[13px] text-text-2">Escuro <ChevronRight size={15} /></span>
@@ -249,16 +262,26 @@ export function SettingsScreen() {
 function PushControl({ spaceId }: { spaceId: string }) {
   const [st, setSt] = useState<PushState | null>(null);
   const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   useEffect(() => { getPushState().then(setSt); }, []);
 
   async function toggle() {
     if (!st || busy) return;
-    setBusy(true);
+    setBusy(true); setMsg(null);
     if (st.subscribed) { await disablePush(spaceId); }
-    else { await enablePush(spaceId); }
+    else {
+      const r = await enablePush(spaceId);
+      setMsg(r.ok ? { text: "Notificações ativadas neste aparelho.", ok: true } : { text: r.error ?? "Não foi possível ativar.", ok: false });
+    }
     setSt(await getPushState());
     setBusy(false);
+  }
+
+  async function test() {
+    setMsg(null);
+    const r = await showLocalTest();
+    setMsg(r.ok ? { text: "Se a notificação apareceu, este aparelho está pronto.", ok: true } : { text: r.error ?? "Falhou.", ok: false });
   }
 
   if (!st) return null;
@@ -285,6 +308,12 @@ function PushControl({ spaceId }: { spaceId: string }) {
       </div>
       {!on && st.reason && <p className="mt-2 text-[12px] text-text-3">{st.reason}</p>}
       {on && <p className="mt-2 text-[12px] text-text-3">Você receberá lembretes mesmo com o app fechado.</p>}
+      {on && (
+        <button onClick={test} className="mt-2 text-[13px] font-medium text-accent-soft underline underline-offset-2">
+          Enviar notificação de teste
+        </button>
+      )}
+      {msg && <p role="status" className={cn("mt-2 text-[12px]", msg.ok ? "text-success" : "text-error")}>{msg.text}</p>}
     </div>
   );
 }
@@ -324,7 +353,7 @@ function SpaceManager() {
 
   return (
     <>
-      <p className="mb-2 mt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Meus espaços</p>
+      <p className="mb-2 mt-6 text-[12px] font-medium text-text-3">Meus espaços</p>
       <div className="space-y-2">
         {s.spaceIds.map((sid) => {
           const active = sid === s.space.id;

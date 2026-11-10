@@ -16,6 +16,7 @@ import { DateDetail, NewDate } from "@/components/screens/DateScreens";
 import { AchievementsScreen, SearchScreen } from "@/components/screens/ExtraScreens";
 import { ProfileScreen, SettingsScreen } from "@/components/screens/AccountScreens";
 import { ServiceWorker } from "@/components/ServiceWorker";
+import { syncPushSub } from "@/lib/push";
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ function Root() {
   const s = useStore();
 
   if (!s.configured) return <ConfigNotice />;
+  if (s.bootError) return <BootError message={s.bootError} onRetry={s.retryBoot} onSignOut={s.authed ? s.signOutFlow : undefined} />;
   if (!s.ready) return <Splash />;
 
   if (s.onboarding || !s.authed || !s.hasSpace) {
@@ -49,7 +51,29 @@ function Splash() {
     <div className="grid min-h-[100dvh] place-items-center bg-bg">
       <div className="flex flex-col items-center gap-3 anim-fade">
         <SpaceLogo size={72} />
-        <span className="font-mono text-[12px] tracking-[0.2em] text-text-3">PEGA AÍ</span>
+        <span className="text-[15px] font-medium tracking-wide text-text-2">Pega Aí</span>
+        <span className="sr-only" role="status">Carregando seus dados…</span>
+      </div>
+    </div>
+  );
+}
+
+function BootError({ message, onRetry, onSignOut }: { message: string; onRetry: () => void; onSignOut?: () => void }) {
+  return (
+    <div className="grid min-h-[100dvh] place-items-center bg-bg px-6">
+      <div role="alert" className="max-w-[340px] text-center">
+        <SpaceLogo size={56} />
+        <h1 className="mt-4 text-[20px] font-semibold">Não conseguimos abrir seu espaço</h1>
+        <p className="mt-2 text-[14px] text-text-2">{message}</p>
+        <p className="mt-1 text-[13px] text-text-3">Seus dados continuam salvos. Nada foi apagado.</p>
+        <button onClick={onRetry} className="mt-5 h-11 w-full rounded-md bg-accent text-[15px] font-semibold text-[#0a0a0e] active:scale-[0.99]">
+          Tentar de novo
+        </button>
+        {onSignOut && (
+          <button onClick={onSignOut} className="mt-3 w-full py-2 text-[14px] text-text-2 hover:text-text">
+            Sair da conta
+          </button>
+        )}
       </div>
     </div>
   );
@@ -73,6 +97,9 @@ function ConfigNotice() {
 
 function Shell() {
   const { tab, open } = useNav();
+  const { space } = useStore();
+
+  useEffect(() => { if (space.id) syncPushSub(space.id); }, [space.id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

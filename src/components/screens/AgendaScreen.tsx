@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, CalendarDays } from "lucide-react";
+import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useNav } from "@/lib/nav";
+import { Fab } from "@/components/PhoneFrame";
 import { PERSON_HEX, cn } from "@/lib/cn";
 import { occurrenceDaysInMonth, rangeLen, Recurrence } from "@/lib/dates";
 
@@ -70,7 +71,7 @@ export function AgendaScreen() {
             <span className="font-mono text-[40px] font-semibold leading-none" style={{ color: PERSON_HEX[featured.color] }}>
               {String(featured.daysAway).padStart(2, "0")}
             </span>
-            <span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-text-3">Dias</span>
+            <span className="mt-1 block text-[11px] font-medium text-text-3">Dias</span>
           </div>
           <div>
             <p className="text-[15px] font-semibold">{featured.title}</p>
@@ -153,13 +154,7 @@ export function AgendaScreen() {
         ))}
       </div>
 
-      <button
-        onClick={() => open({ kind: "new-date" })}
-        className="absolute bottom-5 right-5 grid h-12 w-12 place-items-center rounded-full bg-accent text-[#0a0a0e] shadow-[0_8px_24px_-6px_rgba(157,140,246,0.6)] active:scale-95 transition-transform"
-        aria-label="Nova data"
-      >
-        <Plus size={22} strokeWidth={2.5} />
-      </button>
+      <Fab label="Nova data" onClick={() => open({ kind: "new-date" })} />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 import { cn } from "@/lib/cn";
+import { clickableProps } from "@/components/ui/Surface";
 
 export function Sheet({
   open,
@@ -18,7 +19,7 @@ export function Sheet({
         onClick={onClose}
       />
       <div className="absolute inset-x-0 bottom-0 anim-sheet">
-        <div className="rounded-t-xl bg-surface border-t border-border px-5 pb-6 pt-3">
+        <div role="dialog" aria-modal="true" className="max-h-[88dvh] overflow-y-auto overscroll-contain rounded-t-xl bg-surface border-t border-border px-5 pb-[max(24px,env(safe-area-inset-bottom))] pt-3">
           <div className="mx-auto mb-4 h-1 w-9 rounded-full bg-border" />
           {children}
         </div>
@@ -55,6 +56,7 @@ export function Row({
   return (
     <div
       onClick={onClick}
+      {...(onClick ? clickableProps(onClick) : {})}
       className={cn(
         "flex items-center gap-3 rounded-md bg-surface border border-border px-4 py-3.5",
         onClick && "cursor-pointer transition-colors hover:border-[#2a2c38]",

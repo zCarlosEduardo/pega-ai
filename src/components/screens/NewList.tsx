@@ -21,7 +21,7 @@ export function NewList({ shared: initialShared = true }: { shared?: boolean }) 
     const id = await s.addList(name.trim(), shared);
     setBusy(false);
     if (id) open({ kind: "list", id });
-    else close();
+    // se falhou, o aviso de erro já foi mostrado e a tela continua aberta para tentar de novo
   }
 
   return (
@@ -29,7 +29,7 @@ export function NewList({ shared: initialShared = true }: { shared?: boolean }) 
       <StatusBar />
       <div className="flex items-center justify-between px-5 py-2">
         <h1 className="text-[22px] font-semibold">Nova lista</h1>
-        <button onClick={close} className="text-[14px] text-text-2 hover:text-text">Cancelar</button>
+        <button onClick={close} className="px-1 py-2 text-[14px] text-text-2 hover:text-text">Cancelar</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-6">

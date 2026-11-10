@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
-import { Plus, Check } from "lucide-react";
 import { useStore, List } from "@/lib/store";
 import { useNav } from "@/lib/nav";
+import { Fab } from "@/components/PhoneFrame";
 import { Card, Segmented } from "@/components/ui/Surface";
 import { Checkbox, Avatar } from "@/components/ui/Inputs";
 import { cn } from "@/lib/cn";
@@ -95,13 +95,7 @@ export function ListsScreen() {
         </div>
       )}
 
-      <button
-        onClick={() => open({ kind: "new-list", shared: tab === "shared" })}
-        className="absolute bottom-5 right-5 grid h-12 w-12 place-items-center rounded-full bg-accent text-[#0a0a0e] shadow-[0_8px_24px_-6px_rgba(157,140,246,0.6)] active:scale-95 transition-transform"
-        aria-label="Nova lista"
-      >
-        <Plus size={22} strokeWidth={2.5} />
-      </button>
+      <Fab label="Nova lista" onClick={() => open({ kind: "new-list", shared: tab === "shared" })} />
     </div>
   );
 }

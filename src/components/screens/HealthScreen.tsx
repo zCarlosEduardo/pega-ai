@@ -48,7 +48,7 @@ export function HealthScreen() {
         </div>
       ) : (
         <>
-          <p className="mb-3 mt-5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">
+          <p className="mb-3 mt-5 text-[12px] font-medium text-text-3">
             Hoje
           </p>
           <div className="space-y-3">

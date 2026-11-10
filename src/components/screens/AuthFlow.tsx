@@ -56,7 +56,7 @@ function Progress({ current, total, onBack }: { current: number; total: number; 
   return (
     <div className="flex items-center gap-2 px-5 pt-1">
       {onBack && (
-        <button onClick={onBack} className="grid h-8 w-8 place-items-center rounded-full text-text-2">
+        <button onClick={onBack} className="grid h-8 w-8 place-items-center rounded-full text-text-2" aria-label="Voltar">
           <ChevronLeft size={20} />
         </button>
       )}
@@ -135,7 +135,7 @@ function Login({
 
         <div className="my-5 flex items-center gap-3">
           <span className="h-px flex-1 bg-border" />
-          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-3">ou</span>
+          <span className="text-[12px] font-medium text-text-3">ou</span>
           <span className="h-px flex-1 bg-border" />
         </div>
 
@@ -272,7 +272,7 @@ function Invite({ onContinue }: { onContinue: () => void }) {
         </div>
         <div className="mt-7 flex items-center gap-3 rounded-md border border-border bg-surface px-4 py-4">
           <div className="flex-1">
-            <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Código do convite</p>
+            <p className="text-[12px] font-medium text-text-3">Código do convite</p>
             <p className="mt-1 font-mono text-[20px] font-semibold tracking-[0.1em]">{s.space.inviteCode || "—"}</p>
           </div>
           <button onClick={copy} className="grid h-10 w-10 place-items-center rounded-md border border-border text-text-2">
@@ -387,7 +387,7 @@ function ColorStep({ onContinue }: { onContinue: () => void }) {
         <h1 className="mt-6 text-[24px] font-semibold leading-tight">Como você aparece<br />pro seu par</h1>
         <p className="mt-2 text-[14px] text-text-2">Escolha um apelido e a cor que representa você nas listas e na agenda.</p>
         <div className="mt-6"><Label>Seu nome</Label><Input value={name} onChange={setName} /></div>
-        <p className="mb-2 mt-5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-3">Sua cor no espaço</p>
+        <p className="mb-2 mt-5 text-[12px] font-medium text-text-3">Sua cor no espaço</p>
         <div className="flex gap-3">
           {colors.map((c) => (
             <button key={c} onClick={() => setColor(c)} className="h-10 w-10 rounded-md active:scale-95 transition-transform"

@@ -27,6 +27,8 @@ export type List = {
   name: string;
   shared: boolean;
   dotColor: "success" | "accent" | "warning";
+  ownerId?: string; // dono (listas "Minhas"); ausente em listas antigas
+  position?: number;
   items: ListItem[];
 };
 
@@ -81,13 +83,17 @@ export type Achievement = {
 
 export type Activity = {
   id: string;
-  who?: string;
+  who?: string; // member id (uid) de quem fez
   text: string;
-  when: string;
+  when: string; // ISO
   done?: boolean;
 };
 
-export type Space = { id: string; name: string; createdYear: number; inviteCode: string };
+export type Space = {
+  id: string; name: string; createdYear: number; inviteCode: string;
+  streak?: number; // dias seguidos com pelo menos 1 item concluído
+  streakDay?: string; // YYYY-MM-DD do último dia contado
+};
 
 export type AppData = {
   space: Space;
